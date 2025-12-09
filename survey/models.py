@@ -98,6 +98,22 @@ class Question(models.Model):
     def __str__(self):
         return f"{self.survey.title} - {self.text[:50]}"
 
+    @sync_to_async
+    def get_order_async(self):
+        return self.order
+
+    @sync_to_async
+    def get_text_async(self):
+        return self.text
+
+    @sync_to_async
+    def get_question_type_async(self):
+        return self.question_type
+
+    @sync_to_async
+    def is_required_async(self):
+        return self.is_required
+
 
 class QuestionOption(models.Model):
     """Вариант ответа для вопроса с выбором"""
@@ -148,6 +164,10 @@ class SurveySession(models.Model):
     def get_current_session(self):
         return self.survey
 
+    @sync_to_async
+    def get_current_question_order_async(self):
+        return self.current_question.order
+
 
 
 
@@ -159,6 +179,10 @@ class SurveySession(models.Model):
     @sync_to_async
     def get_started_async(self):
         return self.started_at
+
+    @sync_to_async
+    def get_survey_title(self):
+        return self.survey.title
 
 
 class Response(models.Model):

@@ -1,4 +1,7 @@
+from django.db.models import QuerySet
 from telegram import ReplyKeyboardMarkup
+
+from survey.models import SurveySession
 
 
 def get_main_menu_keyboard():
@@ -54,8 +57,17 @@ def get_skip_keyboard():
     keyboard = [['⏭ Пропустить']]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-def get_choice_keyboard(options):
+def get_choice_keyboard(options, question_is_required=False):
     """Клавиатура для вопросов с выбором вариантов"""
     keyboard = [[option.text] for option in options]
-    keyboard.append(['⏭ Пропустить'])
+    if not question_is_required:
+        keyboard.append(['⏭ Пропустить'])
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
+
+def get_unfinished_sessions_keyboard(sessions: QuerySet[SurveySession]):
+    keyboard = []
+    for session in sessions:
+        keyboard.append(
+            [f"ID:{session.pk} | {session.survey.title} от {session.started_at.strftime('%Y/%m/%d %H:%M')}"]
+        )
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)

@@ -19,3 +19,4 @@ class ConversationState(IntEnum):
     SURVEY_MENU = 30
     DROP_SESSION = 31
     DROP_SESSION_SELECT = 32
+    RESUME_MENU = 33
