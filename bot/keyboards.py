@@ -5,8 +5,24 @@ def get_main_menu_keyboard():
     """Главное меню бота"""
     keyboard = [
         ['📝 Начать опрос'],
-        ['ℹ️ Информация', '📊 Мои результаты'],
+        ['ℹ️ Информация', '📊 Мои опросы'],
         ['👤 Мой профиль']
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+def get_survey_management_keyboard():
+    """Меню управления сессиями"""
+    keyboard = [
+        ['▶ Возобновить опрос'],
+        ['❌ Сбросить сессию'],
+        ['⏪️ В главное меню']
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+def get_survey_drop_keyboard():
+    keyboard = [
+        ['❌ Удалить все'],
+        ['⏪️ Назад']
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 

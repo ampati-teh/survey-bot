@@ -1,12 +1,12 @@
 from datetime import datetime
 import hashlib
+from operator import truediv
 
 from asgiref.sync import sync_to_async
 from telegram import Update, ReplyKeyboardRemove
 from telegram.ext import ContextTypes, Application, ConversationHandler, CommandHandler, MessageHandler, filters
 
-from bot.keyboards import get_main_menu_keyboard, get_gender_keyboard, get_occupation_keyboard, get_course_keyboard, \
-    get_skip_keyboard, get_choice_keyboard
+from bot.keyboards import *
 from bot.states import ConversationState
 from survey.models import Respondent, Survey, SurveySession, Response, Question
 
@@ -40,6 +40,7 @@ def generate_anonymous_id(telegram_id: int) -> str:
 
     return anonymous_id
 
+
 @sync_to_async
 def get_or_create_respondent(anonymous_id):
     """Получить или создать анонимного респондента"""
@@ -64,6 +65,7 @@ def get_respondent(anonymous_id):
     """Получить респондента"""
     return Respondent.objects.get(anonymous_id=anonymous_id)
 
+
 @sync_to_async
 def get_active_survey():
     """Получить активный опрос"""
@@ -78,6 +80,7 @@ def create_survey_session(user, survey):
         survey=survey,
         status='in_progress'
     )
+
 
 @sync_to_async
 def get_first_question(survey):
@@ -103,6 +106,7 @@ def abandon_session(session):
 def get_session(session_id):
     """Получить сессию по ID"""
     return SurveySession.objects.get(id=session_id)
+
 
 @sync_to_async
 def get_question_options(question):
@@ -130,6 +134,7 @@ def create_response(session, question, **fields):
 def get_next_question(survey, current_order):
     """Получить следующий вопрос"""
     return survey.questions.filter(order__gt=current_order).order_by('order').first()
+
 
 @sync_to_async
 def complete_session(session):
@@ -343,6 +348,7 @@ async def complete_registration(update: Update, context: ContextTypes.DEFAULT_TY
 
     return ConversationState.MAIN_MENU
 
+
 async def start_survey(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начать прохождение опроса"""
     anonymous_id = context.user_data.get('anonymous_id')
@@ -512,6 +518,7 @@ async def move_to_next_question(update: Update, context: ContextTypes.DEFAULT_TY
 
         return ConversationState.MAIN_MENU
 
+
 async def show_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показать информацию о боте"""
     info_text = (
@@ -543,8 +550,8 @@ async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Спасибо за ваше участие!"
     )
 
-    await update.message.reply_text(results_text, reply_markup=get_main_menu_keyboard())
-    return ConversationState.MAIN_MENU
+    await update.message.reply_text(results_text, reply_markup=get_survey_management_keyboard())
+    return ConversationState.SURVEY_MENU
 
 
 async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -576,7 +583,7 @@ async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await start_survey(update, context)
     elif text == 'ℹ️ Информация':
         return await show_info(update, context)
-    elif text == '📊 Мои результаты':
+    elif text == '📊 Мои опросы':
         return await show_results(update, context)
     elif text == '👤 Мой профиль':
         return await show_profile(update, context)
@@ -588,6 +595,117 @@ async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationState.MAIN_MENU
 
 
+async def handle_survey_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    '''Обработка меню управления опросами'''
+    text = update.message.text
+
+    if text == '▶ Возобновить опрос':
+        return await resume_survey(update, context)
+    elif text == '❌ Сбросить сессию':
+        return await handle_drop_session_menu(update, context)
+    elif text == '⏪️ В главное меню':
+        return await cancel(update, context)
+    else:
+        await update.message.reply_text(
+            "Управление опросами:"
+            "Используйте кнопки меню для навигации.",
+            reply_markup=get_main_menu_keyboard()
+        )
+        return ConversationState.SURVEY_MENU
+
+
+async def resume_survey(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    pass
+
+
+@sync_to_async
+def show_sessions_sync(telegram_id):
+    anonymous_id = generate_anonymous_id(telegram_id)
+    user = Respondent.objects.get(anonymous_id=anonymous_id)
+    sessions = SurveySession.objects.filter(user=user).filter(status='in_progress').order_by('-started_at')
+    sessions_list = {}
+    session: SurveySession
+    reply_text = ''
+
+    if not sessions:
+        reply_text += 'Ваши незавершенные опросы:\n\n'
+        return None
+
+    for session in sessions:
+        title = session.survey.title
+        sessions_list[session.id] = (session.id, title, session.started_at)
+        reply_text += f'{session.id}: {title} от {session.started_at.strftime("%B %d, %Y")}\n'
+
+    reply_text += '\n Отправьте в ответ номер опроса, который хотите завершить'
+    return reply_text
+
+
+async def show_sessions(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    reply = await show_sessions_sync(update.effective_user.id)
+    if reply:
+        await update.message.reply_text(reply, reply_markup=get_survey_drop_keyboard())
+        return ConversationState.DROP_SESSION_SELECT
+    else:
+        await update.message.reply_text('🎉 У вас нет незавершенных опросов! 🎉', reply_markup=get_survey_management_keyboard())
+        return ConversationState.SURVEY_MENU
+
+
+async def handle_drop_session_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+
+    if text == '▶ Возобновить опрос':
+        return await resume_survey(update, context)
+    elif text == '❌ Сбросить сессию':
+        reply_text = await show_sessions(update, context)
+
+        return ConversationState.DROP_SESSION_SELECT
+    elif text == '⏪️ В главное меню':
+        return await cancel(update, context)
+    else:
+        await update.message.reply_text(
+            "Управление опросами:"
+            "Используйте кнопки меню для навигации.",
+            reply_markup=get_main_menu_keyboard()
+        )
+        return ConversationState.SURVEY_MENU
+
+
+@sync_to_async
+def drop_all_sessions_select_sync():
+    if all:
+        SurveySession.objects.all().delete()
+    else:
+        pass
+
+
+@sync_to_async
+def drop_session_select_sync(session_id):
+    try:
+        SurveySession.objects.filter(id=session_id).delete()
+        return True
+    except SurveySession.DoesNotExist:
+        return False
+
+
+async def handle_drop_session_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+
+    if text.isdigit():
+        await drop_session_select_sync(int(text))
+        return await show_sessions(update, context)
+    elif text == '❌ Удалить все':
+        await drop_all_sessions_select_sync()
+        return await show_sessions(update, context)
+    elif text == '⏪️ Назад':
+        return await show_results(update, context)
+    else:
+        await update.message.reply_text(
+            "Используйте кнопки меню или укажите номер сессии для удаления.",
+            reply_markup=get_survey_management_keyboard()
+        )
+        return ConversationState.DROP_SESSION_SELECT
+
+
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Отмена текущего действия"""
     session_id = context.user_data.get('session_id')
@@ -596,7 +714,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await abandon_session(session)
 
     await update.message.reply_text(
-        "Действие отменено. Возвращаемся в главное меню.",
+        "Возвращаемся в главное меню.",
         reply_markup=get_main_menu_keyboard()
     )
 
@@ -638,6 +756,15 @@ def setup_handlers(application: Application):
             ConversationState.WAITING_VOICE_ANSWER: [
                 MessageHandler(filters.VOICE | filters.TEXT, handle_voice_answer)
             ],
+            ConversationState.SURVEY_MENU: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_survey_menu)
+            ],
+            ConversationState.DROP_SESSION: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_drop_session_menu)
+            ],
+            ConversationState.DROP_SESSION_SELECT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_drop_session_select)
+            ]
         },
         fallbacks=[CommandHandler('cancel', cancel)],
     )

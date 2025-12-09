@@ -63,6 +63,17 @@ class Survey(models.Model):
     def __str__(self):
         return self.title
 
+    @sync_to_async
+    def get_survey_title(self):
+        return self.title
+
+    @sync_to_async
+    def get_survey_description(self):
+        return self.description
+
+
+    def get_survey_by_id(self, survey_id):
+        return Survey.objects.get(pk=survey_id)
 
 class Question(models.Model):
     """Вопрос опроса"""
@@ -136,6 +147,19 @@ class SurveySession(models.Model):
     @sync_to_async
     def get_current_session(self):
         return self.survey
+
+
+
+
+    @sync_to_async
+    def get_id_async(self):
+        pk = self.pk
+        return pk
+
+    @sync_to_async
+    def get_started_async(self):
+        return self.started_at
+
 
 class Response(models.Model):
     """Ответ на вопрос"""
