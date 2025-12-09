@@ -1,12 +1,12 @@
 from datetime import datetime
 import hashlib
+from operator import truediv
 
 from asgiref.sync import sync_to_async
 from telegram import Update, ReplyKeyboardRemove
 from telegram.ext import ContextTypes, Application, ConversationHandler, CommandHandler, MessageHandler, filters
 
-from bot.keyboards import get_main_menu_keyboard, get_gender_keyboard, get_occupation_keyboard, get_course_keyboard, \
-    get_skip_keyboard, get_choice_keyboard
+from bot.keyboards import *
 from bot.states import ConversationState
 from survey.models import Respondent, Survey, SurveySession, Response, Question
 
@@ -397,27 +397,30 @@ async def start_survey(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def ask_question(update: Update, context: ContextTypes.DEFAULT_TYPE,
                        session: SurveySession, question: Question):
     """Задать вопрос пользователю"""
-    question_text = f"❓ Вопрос {question.order + 1}:\n\n{question.text}"
 
-    if question.question_type == 'text':
+    question_text = f"❓ Вопрос {await question.get_order_async()}:\n\n{await question.get_text_async()}"
+
+    question_type = await question.get_question_type_async()
+    question_is_required = not await question.is_required_async()
+    if question_type == 'text':
         await update.message.reply_text(
             question_text + "\n\n💬 Пожалуйста, отправьте ваш ответ текстом.",
-            reply_markup=get_skip_keyboard() if not question.is_required else None
+            reply_markup=get_skip_keyboard() if not question_is_required else None
         )
         return ConversationState.WAITING_TEXT_ANSWER
 
-    elif question.question_type == 'choice':
+    elif question_type == 'choice':
         options = await get_question_options(question)
         await update.message.reply_text(
             question_text + "\n\n📌 Выберите один из вариантов:",
-            reply_markup=get_choice_keyboard(options)
+            reply_markup=get_choice_keyboard(options, question_is_required)
         )
         return ConversationState.WAITING_CHOICE_ANSWER
 
-    elif question.question_type == 'voice':
+    elif question_type == 'voice':
         await update.message.reply_text(
             question_text + "\n\n🎤 Пожалуйста, отправьте голосовое сообщение.",
-            reply_markup=get_skip_keyboard() if not question.is_required else None
+            reply_markup=get_skip_keyboard() if not question_is_required else None
         )
         return ConversationState.WAITING_VOICE_ANSWER
 
@@ -426,7 +429,7 @@ async def handle_text_answer(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """Обработка текстового ответа"""
     session_id = context.user_data.get('session_id')
     session = await get_session(session_id)
-    question = session.current_question
+    question = await session.get_current_question()
 
     # Проверка на пропуск
     if update.message.text == '⏭ Пропустить' and not question.is_required:
@@ -500,8 +503,8 @@ async def handle_voice_answer(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def move_to_next_question(update: Update, context: ContextTypes.DEFAULT_TYPE,
                                 session: SurveySession):
     """Переход к следующему вопросу или завершение опроса"""
-    current_order = session.current_question.order
-    next_question = await get_next_question(session.survey, current_order)
+    current_order = await session.get_current_question_order_async()
+    next_question = await get_next_question(await session.get_current_session(), current_order)
 
     if next_question:
         await update_session_question(session, next_question)
@@ -523,8 +526,9 @@ async def show_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показать информацию о боте"""
     info_text = (
         "ℹ️ О боте:\n\n"
-        "Этот бот предназначен для проведения опросов.\n\n"
+        "Этот бот предназначен для проведения фонетических опросов.\n\n"
         "Вы можете:\n"
+        "• Проходить опросы о произношении и восприятии звуков\n"
         "• Отвечать текстом, выбирать варианты или записывать голосовые сообщения\n"
         "• Просматривать свои результаты\n\n"
         "Для начала опроса нажмите '📝 Начать опрос'"
@@ -549,8 +553,8 @@ async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Спасибо за ваше участие!"
     )
 
-    await update.message.reply_text(results_text, reply_markup=get_main_menu_keyboard())
-    return ConversationState.MAIN_MENU
+    await update.message.reply_text(results_text, reply_markup=get_survey_management_keyboard())
+    return ConversationState.SURVEY_MENU
 
 
 async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -582,7 +586,7 @@ async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await start_survey(update, context)
     elif text == 'ℹ️ Информация':
         return await show_info(update, context)
-    elif text == '📊 Мои результаты':
+    elif text == '📊 Мои опросы':
         return await show_results(update, context)
     elif text == '👤 Мой профиль':
         return await show_profile(update, context)
@@ -594,15 +598,155 @@ async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationState.MAIN_MENU
 
 
+async def handle_survey_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    '''Обработка меню управления опросами'''
+    text = update.message.text
+
+    if text == '▶ Возобновить опрос':
+        return await resume_survey(update, context)
+    elif text == '❌ Сбросить сессию':
+        return await handle_drop_session_menu(update, context)
+    elif text == '⏪️ В главное меню':
+        return await cancel(update, context)
+    else:
+        await update.message.reply_text(
+            "Управление опросами:"
+            "Используйте кнопки меню для навигации.",
+            reply_markup=get_main_menu_keyboard()
+        )
+        return ConversationState.SURVEY_MENU
+
+
+@sync_to_async
+def get_session_by_id(session_id) -> SurveySession:
+    return SurveySession.objects.get(id=session_id)
+
+async def handle_resume_survey(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+    session_id = text.split('|')[0].split(':')[1].strip()
+    context.user_data['session_id'] = session_id
+    session = await get_session_by_id(session_id)
+
+    """Переход к следующему вопросу или завершение опроса"""
+    question = await session.get_current_question()
+
+    if question:
+        return await ask_question(update, context, session, question)
+
+    return ConversationState.MAIN_MENU
+
+
+async def resume_survey(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    reply,sessions = await show_sessions_sync(update.effective_user.id)
+    if sessions:
+        await update.message.reply_text("Выберите из списка опрос, который хотите возобновить:")
+        await update.message.reply_text(reply, reply_markup=get_unfinished_sessions_keyboard(sessions))
+        return ConversationState.RESUME_MENU
+    else:
+        await update.message.reply_text('🎉 У вас нет незавершенных опросов! 🎉',
+                                        reply_markup=get_survey_management_keyboard())
+        return ConversationState.SURVEY_MENU
+
+    pass
+
+
+@sync_to_async
+def show_sessions_sync(telegram_id):
+    anonymous_id = generate_anonymous_id(telegram_id)
+    user = Respondent.objects.get(anonymous_id=anonymous_id)
+    sessions = SurveySession.objects.filter(user=user).filter(status='in_progress').order_by('-started_at')
+    sessions_dict = {}
+    session: SurveySession
+    reply_text = ''
+
+    if not sessions:
+        return None, None
+
+    reply_text += 'Ваши незавершенные опросы:\n\n'
+    for session in sessions:
+        title = session.survey.title
+        sessions_dict[session.id] = (session.id, title, session.started_at)
+        reply_text += f'{session.id}: {title} от {session.started_at.strftime("%B %d, %Y")}\n'
+
+    reply_text += '\n Отправьте в ответ номер опроса, который хотите завершить'
+    return reply_text, sessions
+
+
+async def show_sessions(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    reply, sessions = await show_sessions_sync(update.effective_user.id)
+    if reply:
+        await update.message.reply_text(reply, reply_markup=get_survey_drop_keyboard())
+        return ConversationState.DROP_SESSION_SELECT
+    else:
+        await update.message.reply_text('🎉 У вас нет незавершенных опросов! 🎉', reply_markup=get_survey_management_keyboard())
+        return ConversationState.SURVEY_MENU
+
+
+async def handle_drop_session_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+
+    if text == '▶ Возобновить опрос':
+        return await resume_survey(update, context)
+    elif text == '❌ Сбросить сессию':
+        reply_text = await show_sessions(update, context)
+
+        return ConversationState.DROP_SESSION_SELECT
+    elif text == '⏪️ В главное меню':
+        return await cancel(update, context)
+    else:
+        await update.message.reply_text(
+            "Управление опросами:"
+            "Используйте кнопки меню для навигации.",
+            reply_markup=get_main_menu_keyboard()
+        )
+        return ConversationState.SURVEY_MENU
+
+
+@sync_to_async
+def drop_all_sessions_select_sync():
+    if all:
+        SurveySession.objects.all().delete()
+    else:
+        pass
+
+
+@sync_to_async
+def drop_session_select_sync(session_id):
+    try:
+        SurveySession.objects.filter(id=session_id).delete()
+        return True
+    except SurveySession.DoesNotExist:
+        return False
+
+
+async def handle_drop_session_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+
+    if text.isdigit():
+        await drop_session_select_sync(int(text))
+        return await show_sessions(update, context)
+    elif text == '❌ Удалить все':
+        await drop_all_sessions_select_sync()
+        return await show_sessions(update, context)
+    elif text == '⏪️ Назад':
+        return await show_results(update, context)
+    else:
+        await update.message.reply_text(
+            "Используйте кнопки меню или укажите номер сессии для удаления.",
+            reply_markup=get_survey_management_keyboard()
+        )
+        return ConversationState.DROP_SESSION_SELECT
+
+
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Отмена текущего действия"""
-    session_id = context.user_data.get('session_id')
-    if session_id:
-        session = await get_session(session_id)
-        await abandon_session(session)
+    # session_id = context.user_data.get('session_id')
+    # if session_id:
+    #     session = await get_session(session_id)
+    #     await abandon_session(session)
 
     await update.message.reply_text(
-        "Действие отменено. Возвращаемся в главное меню.",
+        "Возвращаемся в главное меню.",
         reply_markup=get_main_menu_keyboard()
     )
 
@@ -644,6 +788,18 @@ def setup_handlers(application: Application):
             ConversationState.WAITING_VOICE_ANSWER: [
                 MessageHandler(filters.VOICE | filters.TEXT, handle_voice_answer)
             ],
+            ConversationState.SURVEY_MENU: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_survey_menu)
+            ],
+            ConversationState.DROP_SESSION: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_drop_session_menu)
+            ],
+            ConversationState.DROP_SESSION_SELECT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_drop_session_select)
+            ],
+            ConversationState.RESUME_MENU: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_resume_survey)
+            ]
         },
         fallbacks=[CommandHandler('cancel', cancel)],
     )

@@ -1,0 +1,584 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block extrastyle %}
+    <style>
+        .editor-container {
+            display: flex;
+            gap: 20px;
+            padding: 20px;
+            max-width: 1400px;
+        }
+
+        .editor-main {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .editor-sidebar {
+            width: 300px;
+            position: sticky;
+            top: 20px;
+            height: fit-content;
+        }
+
+        .survey-header {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        .survey-title-edit {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+            background: gray;
+        }
+
+        .survey-title-edit h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+
+        .edit-icon {
+            cursor: pointer;
+            color: #417690;
+            font-size: 18px;
+        }
+
+        .edit-icon:hover {
+            color: #356277;
+        }
+
+        .survey-description {
+            color: #666;
+            margin: 10px 0;
+        }
+
+        .add-question-btn {
+            background: #417690;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            width: 100%;
+            margin-bottom: 20px;
+        }
+
+        .add-question-btn:hover {
+            background: #356277;
+        }
+
+        .questions-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .question-item {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            background: #fafafa;
+            transition: all 0.2s;
+        }
+
+        .question-item:hover {
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .question-item.selected {
+            border-color: #417690;
+            background: #f0f8ff;
+        }
+
+        .question-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 10px;
+        }
+
+        .question-number {
+            background: #417690;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+
+        .question-controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        .question-type-select {
+            padding: 6px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: gray;
+        }
+
+        .icon-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 18px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+
+        .icon-btn:hover {
+            background: rgba(0, 0, 0, 0.1);
+        }
+
+        .question-text {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+            font-family: inherit;
+            resize: vertical;
+            min-height: 60px;
+            margin-top: 10px;
+            background: ghostwhite;
+            color: #000;
+        }
+
+        .question-text:focus {
+            outline: none;
+            border-color: #417690;
+            background: #fff;
+        }
+
+        .options-container {
+            margin-top: 10px;
+            padding-left: 20px;
+        }
+
+        .option-item {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 8px;
+            align-items: center;
+            background-color: gray;
+        }
+
+        .option-text {
+            flex: 1;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: gray;
+        }
+
+        .add-option-btn {
+            background: #f0f0f0;
+            border: 1px dashed #999;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+
+        .add-option-btn:hover {
+            background: #e0e0e0;
+        }
+
+        .stats-panel {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .stats-panel h3 {
+            margin-top: 0;
+            font-size: 18px;
+            color: #333;
+        }
+
+        .stats-empty {
+            color: #999;
+            font-style: italic;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .stat-item {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .stat-item:last-child {
+            border-bottom: none;
+        }
+
+        .stat-label {
+            font-weight: bold;
+            color: #666;
+            font-size: 14px;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            color: #417690;
+            font-weight: bold;
+        }
+
+        .option-stat {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        .option-stat:last-child {
+            border-bottom: none;
+        }
+
+        .option-stat-bar {
+            height: 20px;
+            background: #417690;
+            border-radius: 4px;
+            transition: width 0.3s;
+        }
+
+        .back-btn {
+            display: inline-block;
+            padding: 8px 16px;
+            background: #f0f0f0;
+            color: #333;
+            text-decoration: none;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+
+        .back-btn:hover {
+            background: #e0e0e0;
+        }
+
+        .save-indicator {
+            color: #28a745;
+            font-size: 12px;
+            margin-left: 10px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .save-indicator.show {
+            opacity: 1;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+    <div class="editor-container">
+        <div class="editor-main">
+            <a href="{% url 'survey_list' %}" class="back-btn">&larr; Back to surveys</a>
+
+            <div class="survey-header">
+                <div class="survey-title-edit">
+                    <h1 id="survey-title" contenteditable="true">{{ survey.title }}</h1>
+                    <span class="save-indicator" id="title-save-indicator">Saved</span>
+                </div>
+                <p class="survey-description" id="survey-description" contenteditable="true">
+                    {{ survey.description|default:"Add survey description..." }}
+                </p>
+                <div>
+                    <label>
+                        <input type="checkbox" id="survey-active" {% if survey.is_active %}checked{% endif %}>
+                        Survey is active
+                    </label>
+                </div>
+            </div>
+
+            <button class="add-question-btn" onclick="addQuestion()">+ Add question</button>
+
+            <div class="questions-container" id="questions-container">
+                {% if questions_with_stats %}
+                    {% for item in questions_with_stats %}
+                        <div class="question-item" data-question-id="{{ item.question.id }}"
+                             onclick="selectQuestion({{ item.question.id }})">
+                            <div class="question-header">
+                                <div style="display: flex; gap: 10px; align-items: center; flex: 1;">
+                                    <div class="question-number">{{ forloop.counter }}</div>
+                                    <select class="question-type-select"
+                                            onchange="updateQuestionType({{ item.question.id }}, this.value)"
+                                            onclick="event.stopPropagation()">
+                                        <option value="text"
+                                                {% if item.question.question_type == 'text' %}selected{% endif %}>Text
+                                        </option>
+                                        <option value="choice"
+                                                {% if item.question.question_type == 'choice' %}selected{% endif %}>
+                                            Choice
+                                        </option>
+                                        <option value="voice"
+                                                {% if item.question.question_type == 'voice' %}selected{% endif %}>Voice
+                                        </option>
+                                    </select>
+                                </div>
+                                <div class="question-controls">
+                                    <button class="icon-btn"
+                                            onclick="deleteQuestion({{ item.question.id }}); event.stopPropagation();"
+                                            title="Delete">[X]
+                                    </button>
+                                </div>
+                            </div>
+                            <textarea class="question-text"
+                                      onblur="updateQuestionText({{ item.question.id }}, this.value)"
+                                      onclick="event.stopPropagation()">{{ item.question.text }}</textarea>
+
+                            {% if item.question.question_type == 'choice' %}
+                                <div class="options-container">
+                                    {% for option in item.question.options.all %}
+                                        <div class="option-item">
+                                            <input type="text" class="option-text"
+                                                   value="{{ option.text }}"
+                                                   onblur="updateOption({{ option.id }}, this.value)"
+                                                   onclick="event.stopPropagation()">
+                                            <button class="icon-btn"
+                                                    onclick="deleteOption({{ option.id }}); event.stopPropagation();">
+                                                [X]
+                                            </button>
+                                        </div>
+                                    {% endfor %}
+                                    <button class="add-option-btn"
+                                            onclick="addOption({{ item.question.id }}); event.stopPropagation();">+ Add
+                                        option
+                                    </button>
+                                </div>
+                            {% endif %}
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <p style="text-align: center; color: #999; padding: 40px;">
+                        No questions yet. Click the button above to add the first question.
+                    </p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="editor-sidebar">
+            <div class="stats-panel" id="stats-panel">
+                <h3>Question Statistics</h3>
+                <div class="stats-empty" id="stats-empty">
+                    Select a question to see statistics
+                </div>
+                <div id="stats-content" style="display: none;">
+                    <div class="stat-item">
+                        <div class="stat-label">Total responses</div>
+                        <div class="stat-value" id="stat-total-responses">0</div>
+                    </div>
+                    <div id="option-stats-container"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const surveyId = {{ survey.id }};
+        let selectedQuestionId = null;
+
+        const questionStats = {
+            {% for item in questions_with_stats %}
+                {{ item.question.id }}: {
+                    total_responses: {{ item.total_responses }},
+                    option_stats: [
+                        {% for stat in item.option_stats %}
+                            {
+                                text: "{{ stat.text|escapejs }}",
+                                count: {{ stat.count }},
+                                percentage: {{ stat.percentage }}
+                            },
+                        {% endfor %}
+                    ]
+                },
+            {% endfor %}
+        };
+
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+
+        const csrftoken = getCookie('csrftoken');
+
+        function showSaveIndicator(elementId) {
+            const indicator = document.getElementById(elementId);
+            indicator.classList.add('show');
+            setTimeout(() => indicator.classList.remove('show'), 2000);
+        }
+
+        document.getElementById('survey-title').addEventListener('blur', function () {
+            fetch(`/survey/api/survey/${surveyId}/update/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrftoken
+                },
+                body: JSON.stringify({title: this.textContent})
+            }).then(() => showSaveIndicator('title-save-indicator'));
+        });
+
+        document.getElementById('survey-description').addEventListener('blur', function () {
+            fetch(`/survey/api/survey/${surveyId}/update/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrftoken
+                },
+                body: JSON.stringify({description: this.textContent})
+            });
+        });
+
+        document.getElementById('survey-active').addEventListener('change', function () {
+            fetch(`/survey/api/survey/${surveyId}/update/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrftoken
+                },
+                body: JSON.stringify({is_active: this.checked})
+            });
+        });
+
+        function updateQuestionText(questionId, text) {
+            fetch(`/survey/api/question/${questionId}/update/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrftoken
+                },
+                body: JSON.stringify({text: text})
+            });
+        }
+
+        function updateQuestionType(questionId, type) {
+            fetch(`/survey/api/question/${questionId}/update/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrftoken
+                },
+                body: JSON.stringify({question_type: type})
+            }).then(() => location.reload());
+        }
+
+        function deleteQuestion(questionId) {
+            if (confirm('Delete this question?')) {
+                fetch(`/survey/api/question/${questionId}/delete/`, {
+                    method: 'POST',
+                    headers: {'X-CSRFToken': csrftoken}
+                }).then(() => location.reload());
+            }
+        }
+
+        function addQuestion() {
+            fetch(`/survey/api/survey/${surveyId}/question/create/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrftoken
+                },
+                body: JSON.stringify({text: 'New question', question_type: 'text'})
+            }).then(() => location.reload());
+        }
+
+        function updateOption(optionId, text) {
+            fetch(`/survey/api/option/${optionId}/update/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrftoken
+                },
+                body: JSON.stringify({text: text})
+            });
+        }
+
+        function deleteOption(optionId) {
+            if (confirm('Delete this option?')) {
+                fetch(`/survey/api/option/${optionId}/delete/`, {
+                    method: 'POST',
+                    headers: {'X-CSRFToken': csrftoken}
+                }).then(() => location.reload());
+            }
+        }
+
+        function addOption(questionId) {
+            fetch(`/survey/api/question/${questionId}/option/create/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrftoken
+                },
+                body: JSON.stringify({text: 'New option'})
+            }).then(() => location.reload());
+        }
+
+        function selectQuestion(questionId) {
+            document.querySelectorAll('.question-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+
+            document.querySelector(`[data-question-id="${questionId}"]`).classList.add('selected');
+            selectedQuestionId = questionId;
+
+            const stats = questionStats[questionId];
+            if (stats) {
+                document.getElementById('stats-empty').style.display = 'none';
+                document.getElementById('stats-content').style.display = 'block';
+                document.getElementById('stat-total-responses').textContent = stats.total_responses;
+
+                const optionStatsContainer = document.getElementById('option-stats-container');
+                if (stats.option_stats.length > 0) {
+                    optionStatsContainer.innerHTML = '<h4 style="font-size: 14px; margin-top: 15px;">Answer options</h4>';
+                    stats.option_stats.forEach(opt => {
+                        optionStatsContainer.innerHTML += `
+                        <div class="option-stat">
+                            <div>
+                                <div style="font-size: 12px;">${opt.text}</div>
+                                <div style="font-size: 14px; font-weight: bold;">${opt.count} (${opt.percentage}%)</div>
+                            </div>
+                            <div style="flex: 1; margin-left: 10px; background: #eee; border-radius: 4px; overflow: hidden;">
+                                <div class="option-stat-bar" style="width: ${opt.percentage}%;"></div>
+                            </div>
+                        </div>
+                    `;
+                    });
+                } else {
+                    optionStatsContainer.innerHTML = '';
+                }
+            }
+        }
+    </script>
+{% endblock %}
