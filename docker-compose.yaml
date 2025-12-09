@@ -7,5 +7,7 @@ services:
     restart: unless-stopped
     ports:
       - "8910:8000"
+    env_file:
+      - .env
     volumes:
       - .:/app
