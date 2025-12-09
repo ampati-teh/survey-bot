@@ -40,6 +40,7 @@ def generate_anonymous_id(telegram_id: int) -> str:
 
     return anonymous_id
 
+
 @sync_to_async
 def get_or_create_respondent(anonymous_id):
     """Получить или создать анонимного респондента"""
@@ -64,6 +65,7 @@ def get_respondent(anonymous_id):
     """Получить респондента"""
     return Respondent.objects.get(anonymous_id=anonymous_id)
 
+
 @sync_to_async
 def get_active_survey():
     """Получить активный опрос"""
@@ -78,6 +80,7 @@ def create_survey_session(user, survey):
         survey=survey,
         status='in_progress'
     )
+
 
 @sync_to_async
 def get_first_question(survey):
@@ -103,6 +106,7 @@ def abandon_session(session):
 def get_session(session_id):
     """Получить сессию по ID"""
     return SurveySession.objects.get(id=session_id)
+
 
 @sync_to_async
 def get_question_options(question):
@@ -130,6 +134,7 @@ def create_response(session, question, **fields):
 def get_next_question(survey, current_order):
     """Получить следующий вопрос"""
     return survey.questions.filter(order__gt=current_order).order_by('order').first()
+
 
 @sync_to_async
 def complete_session(session):
@@ -343,6 +348,7 @@ async def complete_registration(update: Update, context: ContextTypes.DEFAULT_TY
 
     return ConversationState.MAIN_MENU
 
+
 async def start_survey(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начать прохождение опроса"""
     anonymous_id = context.user_data.get('anonymous_id')
@@ -512,13 +518,13 @@ async def move_to_next_question(update: Update, context: ContextTypes.DEFAULT_TY
 
         return ConversationState.MAIN_MENU
 
+
 async def show_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показать информацию о боте"""
     info_text = (
         "ℹ️ О боте:\n\n"
-        "Этот бот предназначен для проведения фонетических опросов.\n\n"
+        "Этот бот предназначен для проведения опросов.\n\n"
         "Вы можете:\n"
-        "• Проходить опросы о произношении и восприятии звуков\n"
         "• Отвечать текстом, выбирать варианты или записывать голосовые сообщения\n"
         "• Просматривать свои результаты\n\n"
         "Для начала опроса нажмите '📝 Начать опрос'"
