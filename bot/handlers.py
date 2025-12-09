@@ -391,7 +391,7 @@ async def start_survey(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def ask_question(update: Update, context: ContextTypes.DEFAULT_TYPE,
                        session: SurveySession, question: Question):
     """Задать вопрос пользователю"""
-    question_text = f"❓ Вопрос {question.order + 1}:\n\n{question.text}"
+    question_text = f"❓ Вопрос {question.order}:\n\n{question.text}"
 
     if question.question_type == 'text':
         await update.message.reply_text(
@@ -495,7 +495,7 @@ async def move_to_next_question(update: Update, context: ContextTypes.DEFAULT_TY
                                 session: SurveySession):
     """Переход к следующему вопросу или завершение опроса"""
     current_order = session.current_question.order
-    next_question = await get_next_question(session.survey, current_order)
+    next_question = await get_next_question(await session.get_current_session(), current_order)
 
     if next_question:
         await update_session_question(session, next_question)

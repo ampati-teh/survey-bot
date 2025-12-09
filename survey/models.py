@@ -133,6 +133,9 @@ class SurveySession(models.Model):
     def get_current_question(self):
         return self.current_question
 
+    @sync_to_async
+    def get_current_session(self):
+        return self.survey
 
 class Response(models.Model):
     """Ответ на вопрос"""
