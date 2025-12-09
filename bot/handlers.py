@@ -5,9 +5,10 @@ from asgiref.sync import sync_to_async
 from telegram import Update, ReplyKeyboardRemove
 from telegram.ext import ContextTypes
 
-from bot.keyboards import get_main_menu_keyboard, get_gender_keyboard, get_occupation_keyboard, get_course_keyboard
+from bot.keyboards import get_main_menu_keyboard, get_gender_keyboard, get_occupation_keyboard, get_course_keyboard, \
+    get_skip_keyboard, get_choice_keyboard
 from bot.states import ConversationState
-from survey.models import Respondent, Survey, SurveySession, Response
+from survey.models import Respondent, Survey, SurveySession, Response, Question
 
 from django.conf import settings
 
@@ -341,3 +342,172 @@ async def complete_registration(update: Update, context: ContextTypes.DEFAULT_TY
     )
 
     return ConversationState.MAIN_MENU
+
+async def start_survey(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Начать прохождение опроса"""
+    anonymous_id = context.user_data.get('anonymous_id')
+    respondent = await get_respondent(anonymous_id)
+
+    # Получаем активный опрос
+    active_survey = await get_active_survey()
+
+    if not active_survey:
+        await update.message.reply_text(
+            "К сожалению, в данный момент нет активных опросов. 😔\n"
+            "Пожалуйста, попробуйте позже.",
+            reply_markup=get_main_menu_keyboard()
+        )
+        return ConversationState.MAIN_MENU
+
+    # Создаем сессию опроса
+    session = await create_survey_session(respondent, active_survey)
+
+    # Сохраняем ID сессии в контексте
+    context.user_data['session_id'] = session.id
+
+    # Получаем первый вопрос
+    first_question = await get_first_question(active_survey)
+
+    if not first_question:
+        await update.message.reply_text(
+            "Опрос еще не готов (нет вопросов). 🔧\n"
+            "Пожалуйста, попробуйте позже.",
+            reply_markup=get_main_menu_keyboard()
+        )
+        await abandon_session(session)
+        return ConversationState.MAIN_MENU
+
+    await update_session_question(session, first_question)
+
+    await update.message.reply_text(
+        f"📋 Опрос: {active_survey.title}\n\n"
+        f"{active_survey.description}\n\n"
+        "Приступаем к опросу!"
+    )
+
+    return await ask_question(update, context, session, first_question)
+
+
+async def ask_question(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                       session: SurveySession, question: Question):
+    """Задать вопрос пользователю"""
+    question_text = f"❓ Вопрос {question.order + 1}:\n\n{question.text}"
+
+    if question.question_type == 'text':
+        await update.message.reply_text(
+            question_text + "\n\n💬 Пожалуйста, отправьте ваш ответ текстом.",
+            reply_markup=get_skip_keyboard() if not question.is_required else None
+        )
+        return ConversationState.WAITING_TEXT_ANSWER
+
+    elif question.question_type == 'choice':
+        options = await get_question_options(question)
+        await update.message.reply_text(
+            question_text + "\n\n📌 Выберите один из вариантов:",
+            reply_markup=get_choice_keyboard(options)
+        )
+        return ConversationState.WAITING_CHOICE_ANSWER
+
+    elif question.question_type == 'voice':
+        await update.message.reply_text(
+            question_text + "\n\n🎤 Пожалуйста, отправьте голосовое сообщение.",
+            reply_markup=get_skip_keyboard() if not question.is_required else None
+        )
+        return ConversationState.WAITING_VOICE_ANSWER
+
+
+async def handle_text_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка текстового ответа"""
+    session_id = context.user_data.get('session_id')
+    session = await get_session(session_id)
+    question = session.current_question
+
+    # Проверка на пропуск
+    if update.message.text == '⏭ Пропустить' and not question.is_required:
+        return await move_to_next_question(update, context, session)
+
+    # Сохраняем ответ
+    await create_response(session, question, text_answer=update.message.text)
+
+    await update.message.reply_text("✅ Ответ сохранен!")
+
+    return await move_to_next_question(update, context, session)
+
+
+async def handle_choice_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка ответа с выбором варианта"""
+    session_id = context.user_data.get('session_id')
+    session = await get_session(session_id)
+    question = await session.get_current_question()
+
+    # Проверка на пропуск
+    if update.message.text == '⏭ Пропустить' and not question.is_required:
+        return await move_to_next_question(update, context, session)
+
+    # Ищем выбранный вариант
+    selected_option = await find_option_by_text(question, update.message.text)
+
+    if not selected_option:
+        options = await get_question_options(question)
+        await update.message.reply_text(
+            "⚠️ Пожалуйста, выберите один из предложенных вариантов.",
+            reply_markup=get_choice_keyboard(options)
+        )
+        return ConversationState.WAITING_CHOICE_ANSWER
+
+    # Сохраняем ответ
+    await create_response(session, question, selected_option=selected_option)
+
+    await update.message.reply_text("✅ Ответ сохранен!")
+
+    return await move_to_next_question(update, context, session)
+
+
+async def handle_voice_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка голосового ответа"""
+    session_id = context.user_data.get('session_id')
+    session = await get_session(session_id)
+    question = session.current_question
+
+    if not update.message.voice:
+        # Проверка на пропуск
+        if update.message.text == '⏭ Пропустить' and not question.is_required:
+            return await move_to_next_question(update, context, session)
+
+        await update.message.reply_text(
+            "⚠️ Пожалуйста, отправьте голосовое сообщение.",
+            reply_markup=get_skip_keyboard() if not question.is_required else None
+        )
+        return ConversationState.WAITING_VOICE_ANSWER
+
+    # Получаем файл
+    voice_file = await update.message.voice.get_file()
+
+    # Сохраняем ответ с file_id (файл будет скачан позже при необходимости)
+    await create_response(session, question, telegram_file_id=update.message.voice.file_id)
+
+    await update.message.reply_text("✅ Голосовое сообщение сохранено!")
+
+    return await move_to_next_question(update, context, session)
+
+
+async def move_to_next_question(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                                session: SurveySession):
+    """Переход к следующему вопросу или завершение опроса"""
+    current_order = session.current_question.order
+    next_question = await get_next_question(session.survey, current_order)
+
+    if next_question:
+        await update_session_question(session, next_question)
+        return await ask_question(update, context, session, next_question)
+    else:
+        # Опрос завершен
+        await complete_session(session)
+
+        await update.message.reply_text(
+            "🎉 Поздравляем! Вы завершили опрос!\n\n"
+            "Спасибо за ваше участие. Ваши ответы очень важны для нас!",
+            reply_markup=get_main_menu_keyboard()
+        )
+
+        return ConversationState.MAIN_MENU

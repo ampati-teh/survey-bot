@@ -32,3 +32,14 @@ def get_course_keyboard():
         ['4', '5', '6']
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
+
+def get_skip_keyboard():
+    """Клавиатура с кнопкой пропустить"""
+    keyboard = [['⏭ Пропустить']]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+def get_choice_keyboard(options):
+    """Клавиатура для вопросов с выбором вариантов"""
+    keyboard = [[option.text] for option in options]
+    keyboard.append(['⏭ Пропустить'])
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
