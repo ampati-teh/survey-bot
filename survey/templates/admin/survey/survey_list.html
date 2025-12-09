@@ -1,0 +1,150 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block extrastyle %}
+<style>
+    .survey-list-container {
+        padding: 20px;
+        max-width: 1200px;
+    }
+
+    .survey-card {
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        transition: box-shadow 0.2s;
+    }
+
+    .survey-card:hover {
+        box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+
+    .survey-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        margin-bottom: 10px;
+    }
+
+    .survey-title {
+        font-size: 20px;
+        font-weight: bold;
+        color: #333;
+        margin: 0;
+    }
+
+    .survey-status {
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: bold;
+    }
+
+    .status-active {
+        background: #d4edda;
+        color: #155724;
+    }
+
+    .status-inactive {
+        background: #f8d7da;
+        color: #721c24;
+    }
+
+    .survey-meta {
+        color: #666;
+        font-size: 14px;
+        margin-bottom: 15px;
+    }
+
+    .survey-meta span {
+        margin-right: 20px;
+    }
+
+    .survey-actions {
+        display: flex;
+        gap: 10px;
+    }
+
+    .btn {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-block;
+        font-size: 14px;
+        transition: background 0.2s;
+    }
+
+    .btn-primary {
+        background: #417690;
+        color: white;
+    }
+
+    .btn-primary:hover {
+        background: #356277;
+    }
+
+    .btn-secondary {
+        background: #f0f0f0;
+        color: #333;
+    }
+
+    .btn-secondary:hover {
+        background: #e0e0e0;
+    }
+
+    .create-survey-btn {
+        margin-bottom: 20px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="survey-list-container">
+    <h1>{{ title }}</h1>
+
+    <a href="{% url 'admin:survey_survey_add' %}" class="btn btn-primary create-survey-btn">
+        + Create new survey
+    </a>
+
+    {% if surveys %}
+        {% for survey in surveys %}
+        <div class="survey-card">
+            <div class="survey-header">
+                <h2 class="survey-title">{{ survey.title }}</h2>
+                <span class="survey-status {% if survey.is_active %}status-active{% else %}status-inactive{% endif %}">
+                    {% if survey.is_active %}Active{% else %}Inactive{% endif %}
+                </span>
+            </div>
+
+            {% if survey.description %}
+            <p>{{ survey.description|truncatewords:30 }}</p>
+            {% endif %}
+
+            <div class="survey-meta">
+                <span>Questions: {{ survey.question_count }}</span>
+                <span>Responses: {{ survey.response_count }}</span>
+                <span>Created: {{ survey.created_at|date:"d.m.Y" }}</span>
+            </div>
+
+            <div class="survey-actions">
+                <a href="{% url 'survey_editor' survey.id %}" class="btn btn-primary">
+                    Edit
+                </a>
+                <a href="{% url 'admin:survey_survey_change' survey.id %}" class="btn btn-secondary">
+                    Settings
+                </a>
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <p>No surveys yet. Create your first survey!</p>
+    {% endif %}
+</div>
+{% endblock %}
