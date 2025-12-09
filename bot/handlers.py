@@ -1,5 +1,8 @@
 import hashlib
 
+from asgiref.sync import sync_to_async
+
+from survey.models import Respondent
 from django.conf import settings
 
 
@@ -29,3 +32,27 @@ def generate_anonymous_id(telegram_id: int) -> str:
     anonymous_id = hashlib.sha256(data).hexdigest()
 
     return anonymous_id
+
+@sync_to_async
+def get_or_create_respondent(anonymous_id):
+    """Получить или создать анонимного респондента"""
+    return Respondent.objects.get_or_create(
+        anonymous_id=anonymous_id,
+        defaults={}
+    )
+
+
+@sync_to_async
+def update_respondent(anonymous_id, **fields):
+    """Обновить данные респондента"""
+    respondent = Respondent.objects.get(anonymous_id=anonymous_id)
+    for field, value in fields.items():
+        setattr(respondent, field, value)
+    respondent.save()
+    return respondent
+
+
+@sync_to_async
+def get_respondent(anonymous_id):
+    """Получить респондента"""
+    return Respondent.objects.get(anonymous_id=anonymous_id)
