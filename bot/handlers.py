@@ -3,7 +3,7 @@ import hashlib
 
 from asgiref.sync import sync_to_async
 from telegram import Update, ReplyKeyboardRemove
-from telegram.ext import ContextTypes
+from telegram.ext import ContextTypes, Application, ConversationHandler, CommandHandler, MessageHandler, filters
 
 from bot.keyboards import get_main_menu_keyboard, get_gender_keyboard, get_occupation_keyboard, get_course_keyboard, \
     get_skip_keyboard, get_choice_keyboard
@@ -511,3 +511,135 @@ async def move_to_next_question(update: Update, context: ContextTypes.DEFAULT_TY
         )
 
         return ConversationState.MAIN_MENU
+
+async def show_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показать информацию о боте"""
+    info_text = (
+        "ℹ️ О боте:\n\n"
+        "Этот бот предназначен для проведения фонетических опросов.\n\n"
+        "Вы можете:\n"
+        "• Проходить опросы о произношении и восприятии звуков\n"
+        "• Отвечать текстом, выбирать варианты или записывать голосовые сообщения\n"
+        "• Просматривать свои результаты\n\n"
+        "Для начала опроса нажмите '📝 Начать опрос'"
+    )
+
+    await update.message.reply_text(info_text, reply_markup=get_main_menu_keyboard())
+    return ConversationState.MAIN_MENU
+
+
+async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показать результаты пользователя"""
+    anonymous_id = context.user_data.get('anonymous_id')
+    respondent = await get_respondent(anonymous_id)
+
+    completed_sessions = await count_completed_sessions(respondent)
+    in_progress_sessions = await count_in_progress_sessions(respondent)
+
+    results_text = (
+        f"📊 Ваши результаты:\n\n"
+        f"✅ Завершенных опросов: {completed_sessions}\n"
+        f"⏳ Опросов в процессе: {in_progress_sessions}\n\n"
+        "Спасибо за ваше участие!"
+    )
+
+    await update.message.reply_text(results_text, reply_markup=get_main_menu_keyboard())
+    return ConversationState.MAIN_MENU
+
+
+async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показать профиль респондента"""
+    anonymous_id = context.user_data.get('anonymous_id')
+    respondent = await get_respondent(anonymous_id)
+
+    gender_text = respondent.get_gender_display() if respondent.gender else "Не указано"
+    age_text = f"{respondent.age} лет" if respondent.age else "Не указано"
+    occupation_text = respondent.get_occupation_display_full()
+
+    profile_text = (
+        f"👤 Ваш профиль:\n\n"
+        f"Пол: {gender_text}\n"
+        f"Возраст: {age_text}\n"
+        f"Статус: {occupation_text}\n\n"
+        f"📊 Все данные анонимны и защищены."
+    )
+
+    await update.message.reply_text(profile_text, reply_markup=get_main_menu_keyboard())
+    return ConversationState.MAIN_MENU
+
+
+async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка главного меню"""
+    text = update.message.text
+
+    if text == '📝 Начать опрос':
+        return await start_survey(update, context)
+    elif text == 'ℹ️ Информация':
+        return await show_info(update, context)
+    elif text == '📊 Мои результаты':
+        return await show_results(update, context)
+    elif text == '👤 Мой профиль':
+        return await show_profile(update, context)
+    else:
+        await update.message.reply_text(
+            "Используйте кнопки меню для навигации.",
+            reply_markup=get_main_menu_keyboard()
+        )
+        return ConversationState.MAIN_MENU
+
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Отмена текущего действия"""
+    session_id = context.user_data.get('session_id')
+    if session_id:
+        session = await get_session(session_id)
+        await abandon_session(session)
+
+    await update.message.reply_text(
+        "Действие отменено. Возвращаемся в главное меню.",
+        reply_markup=get_main_menu_keyboard()
+    )
+
+    return ConversationState.MAIN_MENU
+
+
+def setup_handlers(application: Application):
+    """Настройка обработчиков бота"""
+
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler('start', start_command)],
+        states={
+            # Состояния регистрации
+            ConversationState.REGISTRATION_GENDER: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_gender)
+            ],
+            ConversationState.REGISTRATION_AGE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_age)
+            ],
+            ConversationState.REGISTRATION_OCCUPATION: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_occupation)
+            ],
+            ConversationState.REGISTRATION_COURSE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_course)
+            ],
+            ConversationState.REGISTRATION_EXPERIENCE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_experience)
+            ],
+            # Основные состояния
+            ConversationState.MAIN_MENU: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_main_menu)
+            ],
+            ConversationState.WAITING_TEXT_ANSWER: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_answer)
+            ],
+            ConversationState.WAITING_CHOICE_ANSWER: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_choice_answer)
+            ],
+            ConversationState.WAITING_VOICE_ANSWER: [
+                MessageHandler(filters.VOICE | filters.TEXT, handle_voice_answer)
+            ],
+        },
+        fallbacks=[CommandHandler('cancel', cancel)],
+    )
+
+    application.add_handler(conv_handler)
