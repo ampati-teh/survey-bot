@@ -605,14 +605,16 @@ async def handle_survey_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if text == '▶ Возобновить опрос':
         return await resume_survey(update, context)
     elif text == '❌ Сбросить сессию':
-        return await handle_drop_session_menu(update, context)
+        reply_text = await show_sessions(update, context)
+
+        return ConversationState.DROP_SESSION_SELECT
     elif text == '⏪️ В главное меню':
         return await cancel(update, context)
     else:
         await update.message.reply_text(
-            "Управление опросами:"
+            "Управление опросами:\n"
             "Используйте кнопки меню для навигации.",
-            reply_markup=get_main_menu_keyboard()
+            reply_markup=get_survey_management_keyboard()
         )
         return ConversationState.SURVEY_MENU
 
@@ -678,42 +680,22 @@ async def show_sessions(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(reply, reply_markup=get_survey_drop_keyboard())
         return ConversationState.DROP_SESSION_SELECT
     else:
-        await update.message.reply_text('🎉 У вас нет незавершенных опросов! 🎉', reply_markup=get_survey_management_keyboard())
-        return ConversationState.SURVEY_MENU
-
-
-async def handle_drop_session_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-
-    if text == '▶ Возобновить опрос':
-        return await resume_survey(update, context)
-    elif text == '❌ Сбросить сессию':
-        reply_text = await show_sessions(update, context)
-
-        return ConversationState.DROP_SESSION_SELECT
-    elif text == '⏪️ В главное меню':
-        return await cancel(update, context)
-    else:
-        await update.message.reply_text(
-            "Управление опросами:"
-            "Используйте кнопки меню для навигации.",
-            reply_markup=get_main_menu_keyboard()
-        )
+        await update.message.reply_text('🎉 У вас нет незавершенных опросов! 🎉', reply_markup=get_survey_drop_keyboard())
         return ConversationState.SURVEY_MENU
 
 
 @sync_to_async
-def drop_all_sessions_select_sync():
-    if all:
-        SurveySession.objects.all().delete()
-    else:
-        pass
+def drop_all_sessions_select_sync(context: ContextTypes.DEFAULT_TYPE):
+        user = Respondent.objects.filter(anonymous_id=context.user_data['anonymous_id'])[0]
+        SurveySession.objects.filter(user=user, status='in_progress').delete()
+
 
 
 @sync_to_async
-def drop_session_select_sync(session_id):
+def drop_session_select_sync(session_id, context: ContextTypes.DEFAULT_TYPE):
     try:
-        SurveySession.objects.filter(id=session_id).delete()
+        user = Respondent.objects.filter(anonymous_id=context.user_data['anonymous_id'])[0]
+        SurveySession.objects.filter(id=session_id, user=user).delete()
         return True
     except SurveySession.DoesNotExist:
         return False
@@ -726,14 +708,15 @@ async def handle_drop_session_select(update: Update, context: ContextTypes.DEFAU
         await drop_session_select_sync(int(text))
         return await show_sessions(update, context)
     elif text == '❌ Удалить все':
-        await drop_all_sessions_select_sync()
+        await drop_all_sessions_select_sync(context)
         return await show_sessions(update, context)
     elif text == '⏪️ Назад':
         return await show_results(update, context)
     else:
         await update.message.reply_text(
+            "Управление сессиями:\n"
             "Используйте кнопки меню или укажите номер сессии для удаления.",
-            reply_markup=get_survey_management_keyboard()
+            reply_markup=get_survey_drop_keyboard()
         )
         return ConversationState.DROP_SESSION_SELECT
 
@@ -790,9 +773,6 @@ def setup_handlers(application: Application):
             ],
             ConversationState.SURVEY_MENU: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_survey_menu)
-            ],
-            ConversationState.DROP_SESSION: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_drop_session_menu)
             ],
             ConversationState.DROP_SESSION_SELECT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_drop_session_select)
